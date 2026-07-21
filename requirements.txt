@@ -1,0 +1,5 @@
+crewai
+python-dotenv
+twilio
+tavily-python
+crewai-tools
