@@ -1,5 +1,5 @@
 from pydantic import BaseModel,Field,field_validator
-from typing import Lists,Optional
+from typing import List,Optional
 from datetime import datetime
 
 class NewsRequest(BaseModel):
@@ -16,7 +16,7 @@ class NewsRequest(BaseModel):
 class NewsResponse(BaseModel):
         success:bool
         topic:str
-        news_items:List[NewsItem] # type: ignore #ignore
+        # news_items:List[NewsItem] # type: ignore #ignore
         total_results:int
         whatsapp_sent:bool=False
         generated_at: datetime = Field(default_factory=datetime.utcnow)

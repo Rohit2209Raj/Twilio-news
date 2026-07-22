@@ -3,6 +3,7 @@ from crewai_tools import TavilySearchTool
 from tools import WhatsAppSenderTool
 import os
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 
@@ -53,7 +54,7 @@ def create_agents():
     return search_agent, editor_agent, sender_agent
 
 
-def process_news(topic:str,send_whatsapp:bool=True):
+async def process_news_async(topic:str,send_whatsapp:bool=True):
     """Process news for given topic"""
     try:
         search_agent, editor_agent, sender_agent = create_agents()
@@ -92,7 +93,7 @@ def process_news(topic:str,send_whatsapp:bool=True):
             verbose=False
         )
         
-        result = crew.kickoff(inputs={"topic": topic}) # type: ignore
+        result = await crew.kickoff_async(inputs={"topic": topic}) # type: ignore
         return str(result)
         
     except Exception as e:

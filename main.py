@@ -2,13 +2,13 @@ from fastapi import FastAPI,HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from models import NewsRequest,NewsResponse,ErrorResponse
-from agents import process_news
+from agents import process_news_async
 import time
 import logging
 from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
-logger=logging.geLogger(__name__)
+logger=logging.getLogger(__name__)
 
 app=FastAPI(
     title='News Bot API',
@@ -49,19 +49,18 @@ async def get_news(request:NewsRequest):
     try:
         logger.info(f"Processing news request for topic: {request.topic}")
 
-        result=process_news(
+        result=await process_news_async(
             topic=request.topic,
             send_whatsapp=request.send_whatsapp
         )
-        processing_time = time.time() - start_time
         
         return NewsResponse(
             success=True,
             topic=request.topic,
             news_text=result,  # Direct LLM formatted output
             whatsapp_sent=request.send_whatsapp,
-            processing_time=round(processing_time, 2),
-            message=f"Successfully processed news in {processing_time:.2f}s"
+            # processing_time=round(processing_time, 2),
+            # message=f"Successfully processed news in {processing_time:.2f}s"
         )
 
     except ValueError as e:
@@ -84,7 +83,7 @@ async def http_exception_handler(request, exc):
         content=ErrorResponse(
             error="Request Error",
             detail=str(exc.detail)
-        ).dict()
+        ).model_dump()
     )
 
 @app.exception_handler(Exception)
