@@ -13,7 +13,7 @@ class NewsRequest(BaseModel):
             raise ValueError("Topics cannot be empty")
         return value.strip()
 
-    class NewsResponse(BaseModel):
+class NewsResponse(BaseModel):
         success:bool
         topic:str
         news_items:List[NewsItem] # type: ignore #ignore
@@ -22,7 +22,7 @@ class NewsRequest(BaseModel):
         generated_at: datetime = Field(default_factory=datetime.utcnow)
         message: str
 
-    class ErrorResponse(BaseModel):
+class ErrorResponse(BaseModel):
         success:bool=False
         error:str
         detail:Optional[str]=None
