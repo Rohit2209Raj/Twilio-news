@@ -91,18 +91,6 @@ send_task = Task(
     agent=sender_agent,
     context=[edit_task],
 )
-
-
-# async def news(topic: str) -> str:
-#     crew = Crew(
-#       agents=[search_agent, editor_agent, sender_agent],
-#       tasks=[search_task, edit_task, send_task],
-#       process=Process.sequential,
-#       verbose=True,
-#     )
-#     result =  crew.kickoff_async(inputs={"topic": topic})
-#     return str(result)
-
 async def news(topic: str) -> str:
     crew = Crew(
       agents=[search_agent, editor_agent, sender_agent],
