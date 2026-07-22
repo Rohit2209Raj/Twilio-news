@@ -13,13 +13,6 @@ class NewsRequest(BaseModel):
             raise ValueError("Topics cannot be empty")
         return value.strip()
 
-
-    class NewsItem(BaseModel):
-        headline:str
-        source:str
-        summary:str
-        url:Optional[str]=None
-
     class NewsResponse(BaseModel):
         success:bool
         topic:str
