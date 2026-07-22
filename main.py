@@ -1,106 +1,99 @@
-from crewai import Agent, Task, Crew, Process, LLM
-from dotenv import load_dotenv
-from crewai_tools import TavilySearchTool
-from crewai.tools import BaseTool
-from twilio.rest import Client
-import os
-import asyncio
+from fastapi import FastAPI,HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from models import NewsRequest,NewsResponse,ErrorResponse
+from agents import process_news
+import time
+import logging
+from datetime import datetime
 
-load_dotenv()
+logging.basicConfig(level=logging.INFO)
+logger=logging.geLogger(__name__)
 
-deepseek_llm=LLM(
-    model="deepseek/deepseek-chat",
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    temperature=0.7
-
+app=FastAPI(
+    title='News Bot API',
+    description='AI-powered news aggregation and WhatsApp notification system',
+    version='1.0.0'
 )
 
-tavily_tool = TavilySearchTool(
-    api_key=os.getenv("TAVILY_API_KEY"),
-    max_results=5
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+@app.get('/')
+async def root():
+    return {
+        'message':'Welcome to news bot API',
+        'endpoints':{
+            "post_news": "/api/news",
+            "health": "/health",
+            "docs": "/docs"
+        }
+    }
 
-class WhatsAppSenderTool(BaseTool):
-    name: str = "WhatsApp Sender"
-    description: str = "Sends the given text message to a WhatsApp number via Twilio."
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        # "timestamp": datetime.utcnow().isoformat()
+    }
 
-    def _run(self, message: str) -> str:
-        client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN")
+
+@app.post("/api/news",response_model=NewsResponse)
+async def get_news(request:NewsRequest):
+
+    try:
+        logger.info(f"Processing news request for topic: {request.topic}")
+
+        result=process_news(
+            topic=request.topic,
+            send_whatsapp=request.send_whatsapp
         )
-        client.messages.create(
-            from_="whatsapp:+14155238886",  # Twilio sandbox number
-            body=message,
-            to=f"whatsapp:{os.getenv('MY_WHATSAPP_NUMBER')}"  # e.g. +91XXXXXXXXXX
+        processing_time = time.time() - start_time
+        
+        return NewsResponse(
+            success=True,
+            topic=request.topic,
+            news_text=result,  # Direct LLM formatted output
+            whatsapp_sent=request.send_whatsapp,
+            processing_time=round(processing_time, 2),
+            message=f"Successfully processed news in {processing_time:.2f}s"
         )
-        return "Message sent successfully to WhatsApp."
 
-whatsapp_tool = WhatsAppSenderTool()
+    except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Error processing news: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to process news: {str(e)}"
+        )
 
-search_agent = Agent(
-    role="News Finder",
-    goal="Given a topic,You need to find latest 5 news about it.",
-    backstory="A news finder,who collects news only from trusted sources and collects only if verfied. ",
-    llm=deepseek_llm,
-    tools=[tavily_tool],
-    # verbose=True,
-    allow_delegation=False,
-)
-
-editor_agent = Agent(
-    role="News Editor",
-    goal="Rewrite the collected news about '{topic}' in simple, jargon-free English that anyone can understand.",
-    backstory="An editor who takes raw or technical news and rewrites it in clear, beginner-friendly language without losing key facts. You are supposed to rewirte news in easier language but dont make it a one-liner summary.it must contain weight",
-    llm=deepseek_llm,
-    allow_delegation=False,
-)
-
-
-sender_agent = Agent(
-    role="WhatsApp Notifier",
-    goal="Send the exact, unaltered final note for '{topic}' to WhatsApp — never shorten or summarize it yourself.",
-    backstory="A reliable delivery assistant that passes content through exactly as received, without editorializing or compressing.",
-    llm=deepseek_llm,
-    tools=[whatsapp_tool],
-    allow_delegation=False,
-)
-
-
-search_task = Task(
-    description="Search for the latest verified news about '{topic}' from trusted sources.",
-    expected_output="A list of 3-5 recent news items with source and short detail.",
-    agent=search_agent,
-)
-
-edit_task = Task(
-    description="Rewrite the collected news about '{topic}' in simple, jargon-free English.",
-    expected_output="Simplified, clean version of the news, same facts, beginner-friendly language.",
-    agent=editor_agent,
-    context=[search_task],
-)
-
-send_task = Task(
-    description=(
-        "Take the EXACT rewritten news text from the previous task (editor's output) "
-        "and pass it AS-IS to the WhatsApp Sender tool's 'message' argument. "
-        "Do NOT summarize, shorten, or rewrite it further. Send the full detailed version, word-for-word."
-    ),
-    expected_output="Confirmation that the full detailed message was sent successfully, unmodified.",
-    agent=sender_agent,
-    context=[edit_task],
-)
-async def news(topic: str) -> str:
-    crew = Crew(
-      agents=[search_agent, editor_agent, sender_agent],
-      tasks=[search_task, edit_task, send_task],
-      process=Process.sequential,
-      verbose=True,
-      llm=deepseek_llm
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error="Request Error",
+            detail=str(exc.detail)
+        ).dict()
     )
-    result = await crew.kickoff_async(inputs={"topic": topic})
-    return str(result)
 
-answer = asyncio.run(news("Indian Stock Market past 1 week performance" ))
-print(answer)
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    logger.error(f"Unhandled error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            error="Internal Server Error",
+            detail="Something went wrong. Please try again later."
+        ).model_dump()
+    )
